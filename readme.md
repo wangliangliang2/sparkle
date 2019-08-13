@@ -1,5 +1,22 @@
 ### Aim to:  simple code , esay reading.
 
+#### Support Protocol:
+
+-  RTMP
+-  AMF
+-  HLS
+-  HTTP-FLV
+
+#### Support Containner:
+
+-  FLV
+-  TS
+
+#### Support Encoding:
+
+-  H264
+-  AAC
+
 #### Useage:
 
 ```shell

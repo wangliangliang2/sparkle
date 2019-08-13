@@ -1,13 +1,13 @@
 package client
 
-import (
-	"av"
-)
+import "av"
 
 type Client interface {
-	Pull() (p av.Packet, err error)
-	Push(p av.Packet) error
-	IsClosed() bool
-	IsFresh() bool
-	ShutDown()
+	Uri() string
+	Token() string
+	GetPacket() (packet *av.Packet, ok bool)
+	ReceivePacket(packet *av.Packet)
+	Close()
+	IsOld() bool
+	IsHls() bool
 }

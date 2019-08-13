@@ -1,83 +1,60 @@
 package server
 
 import (
+	"center"
 	"client"
 	"log"
 	"net"
-	"program"
-	"sync"
 )
 
-type RtmpServer struct {
-	Programs map[string]*program.Program
-	mu       sync.RWMutex
+const RtmpListenPort = ":1935"
+
+type Rtmp struct {
 }
 
-func (R *RtmpServer) GetPrograms() []string {
-	programs := make([]string, 0, len(R.Programs))
-	R.mu.RLock()
-	defer R.mu.RUnlock()
-	for programName, p := range R.Programs {
-		if !p.IsClosed() {
-			programs = append(programs, programName)
+func NewRtmpServer() Rtmp {
+	return Rtmp{}
+}
+
+func (R Rtmp) Serve() {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println(err)
 		}
-	}
-	return programs
-}
-
-func (R *RtmpServer) ExistProgram(name string) bool {
-	if p, ok := R.Programs[name]; ok && !p.IsClosed() {
-		return true
-	}
-	return false
-}
-
-func (R *RtmpServer) AddClient(name string, subscriber client.Client) {
-	if p, ok := R.Programs[name]; ok && !p.IsClosed() {
-		p.AddSubscriber(subscriber)
-	}
-}
-
-func NewRtmpServer() *RtmpServer {
-	return &RtmpServer{
-		Programs: make(map[string]*program.Program),
-	}
-}
-
-func (R *RtmpServer) Serve() {
-	l, err := net.Listen("tcp", ":1935")
+	}()
+	l, err := net.Listen("tcp", RtmpListenPort)
 	if err != nil {
-		log.Fatalln("can't use port 1935")
+		panic("RTMP Server Can't Start...")
 	}
-	defer l.Close()
+	log.Println("RTMP Server Listening ", RtmpListenPort)
 	for {
 		conn, err := l.Accept()
 		if err != nil {
+			log.Println(err)
 			continue
 		}
-		stream := client.NewRtmpClient(conn)
-		go R.Handle(stream)
+		cli := client.NewRtmpClient(conn)
+		R.handleConn(cli)
 	}
 }
 
-func (R *RtmpServer) Handle(stream *client.RtmpClient) {
-	if err := stream.Handshake(); err != nil {
-		log.Println(err)
+func (R Rtmp) handleConn(cli *client.Rtmp) {
+	go cli.Work()
+	go R.addClientToCenter(cli)
+}
+
+func (R Rtmp) addClientToCenter(cli *client.Rtmp) {
+	<-cli.Ready
+	if cli.IsPub() {
+		if ok := center.StartShow(cli); !ok {
+			cli.CloseConn()
+		}
+		if ok := center.JoinShow(client.NewHlsClient(cli.Uri())); !ok {
+			log.Println("hls client failed ....")
+		}
 		return
 	}
-	programName, isPub := stream.Start()
-	switch {
-	case isPub && !R.ExistProgram(programName):
-		p := program.NewProgram(programName, stream)
-		R.mu.Lock()
-		R.Programs[programName] = p
-		R.mu.Unlock()
-		stream.ReceiveData()
-		p.Begin()
-	case !isPub && R.ExistProgram(programName):
-		R.AddClient(programName, stream)
-		stream.ReceiveData()
-	default:
-		stream.ShutDown()
+	if ok := center.JoinShow(cli); !ok {
+		cli.CloseConn()
 	}
 }

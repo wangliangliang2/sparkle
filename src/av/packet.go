@@ -1,77 +1,40 @@
 package av
 
 import (
-	"chunk"
-	"protocol/flv"
+	"chunkstream"
+	"protocol/flv/tag"
 )
 
 type Packet struct {
 	IsAudio    bool
 	IsVideo    bool
 	IsMetadata bool
-	TimeStamp  uint32
 	TimeDelta  uint32
 	StreamID   uint32
-	flv.Tag
-	Data []byte
+	CSID       uint32
+	tag.Tag
 }
 
-func NewPacket(cs *chunk.ChunkStream) Packet {
-	tag := flv.Tag{}
-	switch cs.TypeID {
-	case flv.TAG_AUDIO:
-		tag.ParseAudioHeader(cs.Data)
-	case flv.TAG_VIDEO:
-		tag.ParseVideoHeader(cs.Data)
+func NewPacket(chunk *chunkstream.ChunkStream) (p *Packet) {
+	p = &Packet{
+		Tag:        tag.New(chunk.MsgTypeID, chunk.Timestamp, chunk.Data),
+		CSID:       chunk.CSID,
+		StreamID:   chunk.MsgStreamID,
+		TimeDelta:  chunk.Timedelta,
+		IsAudio:    chunk.MsgTypeID == chunkstream.MsgtypeIDAudioMsg,
+		IsVideo:    chunk.MsgTypeID == chunkstream.MsgtypeIDVideoMsg,
+		IsMetadata: chunk.MsgTypeID == chunkstream.MsgtypeIDDataMsgAMF0,
 	}
-	p := Packet{
-		IsAudio:    cs.TypeID == flv.TAG_AUDIO,
-		IsVideo:    cs.TypeID == flv.TAG_VIDEO,
-		IsMetadata: cs.TypeID == flv.TAG_SCRIPTDATAAMF0 || cs.TypeID == flv.TAG_SCRIPTDATAAMF3,
-		StreamID:   cs.StreamID,
-		Data:       cs.Data,
-		TimeStamp:  cs.Timestamp,
-		TimeDelta:  cs.TimeDelta,
-		Tag:        tag,
-	}
-
-	return p
+	return
 }
 
-func (P *Packet) TransferToChunkStream() *chunk.ChunkStream {
-	var cs chunk.ChunkStream
-	cs.Data = P.Data
-	cs.Length = uint32(len(P.Data))
-	cs.StreamID = P.StreamID
-	cs.Timestamp = P.TimeStamp
-
-	switch {
-	case P.IsVideo:
-		cs.TypeID = flv.TAG_VIDEO
-	case P.IsAudio:
-		cs.TypeID = flv.TAG_AUDIO
-	case P.IsMetadata:
-		cs.TypeID = flv.TAG_SCRIPTDATAAMF0
-	}
-	return &cs
-}
-
-func (P *Packet) IsAudioSequence() bool {
-	return P.SoundFormat == flv.SOUND_AAC && P.AacPacketType == flv.AAC_SEQHDR
-}
-
-func (P *Packet) IsVideoSequence() bool {
-	return P.FrameType == flv.FRAME_KEY && P.AvcPacketType == flv.AVC_SEQHDR
-}
-
-func (P *Packet) IsPureAudioData() bool {
-	return P.IsAudio && P.AacPacketType != flv.AAC_SEQHDR
-}
-
-func (P *Packet) IsPureVideoData() bool {
-	return P.IsVideo && P.AvcPacketType != flv.AVC_SEQHDR
-}
-
-func (P *Packet) IsVideoKeyFrame() bool {
-	return P.FrameType == flv.FRAME_KEY
+func (P *Packet) ToChunkStream() (chunk *chunkstream.ChunkStream) {
+	chunk = &chunkstream.ChunkStream{}
+	chunk.Data = P.Data
+	chunk.MsgLen = uint32(len(P.Data))
+	chunk.MsgStreamID = P.StreamID
+	chunk.Timestamp = P.Timestamp
+	chunk.CSID = P.CSID
+	chunk.MsgTypeID = P.TypeID
+	return
 }

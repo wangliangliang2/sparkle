@@ -1,38 +1,47 @@
 package server
 
 import (
+	"center"
 	"client"
 	"log"
 	"net/http"
 )
 
-type FlvServer struct {
-	Handle Server
+const FlvListenPort = ":2222"
+
+type Flv struct {
 }
 
-func NewFlvServer(handle Server) *FlvServer {
-	if handle == nil {
-		log.Fatalln("Need RTMP Server")
-	}
-	return &FlvServer{
-		Handle: handle,
-	}
+func NewFlvServer() Flv {
+	return Flv{}
 }
 
-func (F *FlvServer) Serve() {
+func (F Flv) Serve() {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println(err)
+		}
+	}()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		F.handleConnect(w, r)
 	})
-	http.ListenAndServe(":2222", mux)
+	log.Println("FLV Server Listening ", FlvListenPort)
+	http.ListenAndServe(FlvListenPort, mux)
+}
+
+func (F Flv) handleConnect(w http.ResponseWriter, r *http.Request) {
+	flv := client.NewFlvClient("rtmplive/home", w)
+	go F.joinShow(flv)
+	flv.Work()
 
 }
 
-func (F *FlvServer) handleConnect(w http.ResponseWriter, r *http.Request) {
-	programName := r.URL.Path[1:]
-	if F.Handle.ExistProgram(programName) {
-		subscriber := client.NewFlvClient(w)
-		F.Handle.AddClient(programName, subscriber)
-		subscriber.Play()
+func (F Flv) joinShow(flv *client.Flv) {
+	if ok := center.JoinShow(flv); !ok {
+		flv.Close()
 	}
+	<-flv.Notice
+	center.LeaveShow(flv)
+
 }

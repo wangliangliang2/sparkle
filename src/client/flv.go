@@ -2,83 +2,97 @@ package client
 
 import (
 	"av"
-	"bits"
+	"crypto/md5"
+	"encoding/hex"
 	"net/http"
-	"protocol/flv"
+	"protocol/flv/tag"
+	"time"
 )
 
-type FlvClient struct {
-	Data              chan av.Packet
-	WebHandle         http.ResponseWriter
-	isClosed, isFresh bool
+type Flv struct {
+	isOld    bool
+	isClosed bool
+	uri      string
+	token    string
+	Notice   chan struct{}
+	handle   http.ResponseWriter
 }
 
-func NewFlvClient(w http.ResponseWriter) *FlvClient {
-	return &FlvClient{
-		Data:      make(chan av.Packet, 1024),
-		isFresh:   true,
-		WebHandle: w,
+func NewFlvClient(uri string, w http.ResponseWriter) *Flv {
+	flv := &Flv{
+		uri:    uri,
+		Notice: make(chan struct{}),
+		handle: w,
 	}
+	flv.Token()
+	return flv
 }
 
-func (F *FlvClient) Pull() (p av.Packet, err error) {
+func (F Flv) IsHls() (ret bool) {
+	ret = false
 	return
 }
 
-func (F *FlvClient) Push(p av.Packet) error {
-	F.Data <- p
-	return nil
-}
-func (F *FlvClient) IsClosed() bool {
-	return F.isClosed
+func (F *Flv) IsOld() (ret bool) {
+	ret = F.isOld
+	F.isOld = true
+	return
 }
 
-func (F *FlvClient) IsFresh() bool {
-	defer func() { F.isFresh = false }()
-	return F.isFresh
+func (F Flv) Uri() (ret string) {
+	ret = F.uri
+	return
 }
 
-func (F *FlvClient) ShutDown() {
-	close(F.Data)
+func (F *Flv) LeaveShow() {
+	F.Notice <- struct{}{}
 }
 
-func (F *FlvClient) Play() {
-	F.Write([]byte{0x46, 0x4C, 0x56, 0x01, 0x05, 0x00, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00, 0x00})
-	for {
-		p, ok := <-F.Data
-		if !ok {
-			break
-		}
-		switch {
-		case p.IsMetadata:
-			F.Write([]byte{flv.TAG_SCRIPTDATAAMF0})
-		case p.IsAudio:
-			F.Write([]byte{flv.TAG_AUDIO})
-		case p.IsVideo:
-			F.Write([]byte{flv.TAG_VIDEO})
-		}
-		F.Write(bits.PutU24BE(uint32(len(p.Data))))
-		if p.TimeStamp >= 0xFFFFFF {
-			F.Write(bits.PutU32BE(p.TimeStamp))
-		} else {
-			F.Write(bits.PutU24BE(p.TimeStamp))
-			F.Write([]byte{0x00})
-		}
-		F.Write(bits.PutU24BE(p.StreamID))
-		F.Write(p.Data)
-		// tag type | tag data size | timestamp | extendTimestamp | streamid |tag data
-		//   1byte      3bytes         3bytes       1byte           3bytes      nbytes
-		F.Write(bits.PutU32BE(uint32(len(p.Data) + 11)))
-
-	}
+func (F *Flv) CloseChannel() {
+	close(F.Notice)
 }
 
-func (F *FlvClient) Write(data []byte) {
-	if F.isClosed {
+func (F *Flv) Token() (ret string) {
+	if F.token != "" {
+		ret = F.token
 		return
 	}
-	if _, err := F.WebHandle.Write(data); err != nil {
-		// if user close then tell program remove.
-		F.isClosed = true
+	text := F.uri + time.Now().Format("2006-01-02 15:04:05")
+	hasher := md5.New()
+	hasher.Write([]byte(text))
+	F.token = hex.EncodeToString(hasher.Sum(nil))
+	ret = F.token
+	return
+}
+
+func (F *Flv) ReceivePacket(packet *av.Packet) {
+	F.Write(packet.ToFlvTag())
+}
+
+func (F *Flv) Work() {
+	F.Write(tag.FlvFileHeader)
+	for {
+		time.Sleep(time.Second)
+		if F.isClosed {
+			F.LeaveShow()
+			break
+		}
 	}
+	F.CloseChannel()
+}
+
+func (F *Flv) Write(b []byte) {
+	var err error
+	if _, err = F.handle.Write(b); err != nil {
+		F.isClosed = true
+		return
+	}
+}
+
+func (F *Flv) Close() {
+	F.isClosed = true
+}
+
+func (F Flv) GetPacket() (packet *av.Packet, ok bool) {
+	return
 }

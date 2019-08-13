@@ -3,107 +3,129 @@ package client
 import (
 	"av"
 	"bytes"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"protocol/hls"
 	"strconv"
+	"sync"
 	"time"
 )
 
-type HlsClient struct {
-	Data             chan av.Packet
-	Cache            map[string]*HlsCache
-	isFresh, isClose bool
+type HlsCache struct {
+	Data      []byte
+	SeqNumber int
+	Duration  float64
 }
 
-func NewHlsClient() *HlsClient {
-	hls := &HlsClient{
-		Data:    make(chan av.Packet, 1024),
-		Cache:   make(map[string]*HlsCache),
-		isFresh: true,
+func NewHlsCache(seq int, duration float64, data []byte) *HlsCache {
+	cache := &HlsCache{
+		Data:      data,
+		SeqNumber: seq,
+		Duration:  duration,
 	}
-	go hls.Store()
+	return cache
+}
+
+type Hls struct {
+	isOld     bool
+	uri       string
+	token     string
+	ts        *hls.TS
+	seqNumber int
+	startTime time.Time
+	tsBuf     bytes.Buffer
+	cache     sync.Map
+}
+
+func NewHlsClient(uri string) *Hls {
+	hls := &Hls{
+		startTime: time.Now(),
+		uri:       uri,
+		ts:        &hls.TS{},
+	}
+	hls.Token()
 	return hls
 }
 
-func (H *HlsClient) Pull() (p av.Packet, err error) {
+func (H Hls) IsHls() (ret bool) {
+	ret = true
 	return
 }
 
-func (H *HlsClient) Push(p av.Packet) error {
+func (H *Hls) IsOld() (ret bool) {
+	ret = H.isOld
+	H.isOld = true
+	return
+}
+
+func (H Hls) Uri() (ret string) {
+	ret = H.uri
+	return
+}
+
+func (H *Hls) Token() (ret string) {
+	if H.token != "" {
+		ret = H.token
+		return
+	}
+	text := H.uri + "Hls" + time.Now().Format("2006-01-02 15:04:05")
+	hasher := md5.New()
+	hasher.Write([]byte(text))
+	H.token = hex.EncodeToString(hasher.Sum(nil))
+	ret = H.token
+	return
+}
+
+func (H *Hls) ReceivePacket(packet *av.Packet) {
 	switch {
-	case p.IsAudio, p.IsVideo:
-		H.Data <- p
-	}
-	return nil
-}
-
-func (H *HlsClient) IsClosed() bool {
-	return H.isClose
-}
-
-func (H *HlsClient) IsFresh() bool {
-	defer func() { H.isFresh = false }()
-	return H.isFresh
-}
-
-func (H *HlsClient) ShutDown() {
-	close(H.Data)
-}
-
-func (H *HlsClient) Store() {
-	var tsContent bytes.Buffer
-	ts, SeqNumber, StartTime := hls.TS{}, 0, time.Now()
-	for {
-		p, ok := <-H.Data
-		if !ok {
-			break
-		}
-		switch {
-		case p.IsAudioSequence(), p.IsVideoSequence():
-			ts.ReadSeq(p)
-		case p.IsPureAudioData(), p.IsPureVideoData():
-			if p.IsVideoKeyFrame() {
-				if tsContent.Len() != 0 {
-					duration := time.Now().Sub(StartTime).Seconds()
-					cache := NewHlsCache(SeqNumber, duration, tsContent.Bytes())
-					index := strconv.Itoa(SeqNumber) + ".ts"
-					H.Cache[index] = cache
-					tsContent.Reset()
-					SeqNumber++
-				}
-				tsContent.Write(hls.MakePAT())
-				tsContent.Write(ts.MakePMT())
-				StartTime = time.Now()
+	case packet.IsAudioSequence(), packet.IsVideoSequence():
+		H.ts.ReadSeq(packet)
+	case packet.IsPureAudioData(), packet.IsPureVideoData():
+		if packet.IsVideoKeyFrame() {
+			if H.tsBuf.Len() != 0 {
+				duration := time.Now().Sub(H.startTime).Seconds()
+				cache := NewHlsCache(H.seqNumber, duration, H.tsBuf.Bytes())
+				index := strconv.Itoa(H.seqNumber) + ".ts"
+				H.cache.Store(index, cache)
+				H.tsBuf = bytes.Buffer{}
+				H.seqNumber++
 			}
-			tsContent.Write(ts.ReadData(p))
+			H.tsBuf.Write(hls.GetPAT())
+			H.tsBuf.Write(H.ts.GetPMT())
+			H.startTime = time.Now()
 		}
+		H.tsBuf.Write(H.ts.ReadData(packet))
 	}
-	for key, _ := range H.Cache {
-		delete(H.Cache, key)
-	}
-	H.Cache = nil
-	H.isClose = true
 }
 
-func (H *HlsClient) WriteM3u8(name string, w http.ResponseWriter) {
+func (H *Hls) Close() {
+}
+
+func (H Hls) GetPacket() (packet *av.Packet, ok bool) {
+	return
+}
+
+func (H *Hls) WriteM3u8(name string, w http.ResponseWriter) {
 	body := bytes.NewBuffer(nil)
-	getSeq, length := false, len(H.Cache)
+	getSeq, length := false, 0
+	H.cache.Range(func(_, _ interface{}) bool {
+		length++
+		return true
+	})
 	for index := 0; index < length; index++ {
 		ts := strconv.Itoa(index) + ".ts"
-		cache := H.Cache[ts]
-		if cache != nil {
-			if !cache.IsTimeout(length) {
-				if !getSeq {
-					getSeq = true
-					fmt.Fprintf(body,
-						"#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-ALLOW-CACHE:NO\n#EXT-X-TARGETDURATION:%d\n#EXT-X-MEDIA-SEQUENCE:%d\n\n",
-						4, cache.SeqNumber)
-				}
-				fmt.Fprintf(body, "#EXTINF:%.3f\n%s\n", cache.Duration, "/"+name+"/"+ts)
-			} else {
-				H.Cache[ts] = nil
+		if val, ok := H.cache.Load(ts); ok && val != nil {
+			cache := val.(*HlsCache)
+			if !getSeq {
+				getSeq = true
+				fmt.Fprintf(body,
+					"#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-ALLOW-CACHE:NO\n#EXT-X-TARGETDURATION:%d\n#EXT-X-MEDIA-SEQUENCE:%d\n\n",
+					4, cache.SeqNumber)
 			}
+			fmt.Fprintf(body, "#EXTINF:%.3f\n%s\n", cache.Duration, "/"+name+"/"+ts)
+
 		}
 	}
 	w.Header().Set("Cache-Control", "no-cache")
@@ -112,32 +134,12 @@ func (H *HlsClient) WriteM3u8(name string, w http.ResponseWriter) {
 	w.Write(body.Bytes())
 
 }
-func (H *HlsClient) WriteTs(index string, w http.ResponseWriter) {
-	if cache, ok := H.Cache[index]; ok {
+
+func (H *Hls) WriteTs(index string, w http.ResponseWriter) {
+	if val, ok := H.cache.Load(index); ok {
+		cache := val.(*HlsCache)
 		w.Header().Set("Content-Type", "video/mp2ts")
 		w.Header().Set("Content-Length", strconv.Itoa(len(cache.Data)))
 		w.Write(cache.Data)
 	}
-}
-
-type HlsCache struct {
-	Data      []byte
-	SeqNumber int
-	Time      time.Time
-	Duration  float64
-}
-
-func (H *HlsCache) IsTimeout(lastIndex int) bool {
-	return lastIndex-3-H.SeqNumber > 0
-}
-
-func NewHlsCache(seq int, duration float64, data []byte) *HlsCache {
-	cache := &HlsCache{
-		Data:      make([]byte, len(data)),
-		SeqNumber: seq,
-		Time:      time.Now(),
-		Duration:  duration,
-	}
-	copy(cache.Data, data)
-	return cache
 }
