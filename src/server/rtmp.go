@@ -24,9 +24,9 @@ func (R Rtmp) Serve() {
 	}()
 	l, err := net.Listen("tcp", RtmpListenPort)
 	if err != nil {
-		panic("RTMP Server Can't Start...")
+		panic("Rtmp Server Can't Start...")
 	}
-	log.Println("RTMP Server Listening ", RtmpListenPort)
+	log.Println("Rtmp Server Listening ", RtmpListenPort)
 	for {
 		conn, err := l.Accept()
 		if err != nil {

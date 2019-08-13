@@ -26,8 +26,10 @@ func (F Flv) Serve() {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		F.handleConnect(w, r)
 	})
-	log.Println("FLV Server Listening ", FlvListenPort)
-	http.ListenAndServe(FlvListenPort, mux)
+	log.Println("Flv Server Listening ", FlvListenPort)
+	if err := http.ListenAndServe(FlvListenPort, mux); err != nil {
+		panic("Flv Server Can't Start...")
+	}
 }
 
 func (F Flv) handleConnect(w http.ResponseWriter, r *http.Request) {

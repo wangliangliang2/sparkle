@@ -19,12 +19,19 @@ func NewHlsServer() Hls {
 }
 
 func (H Hls) Serve() {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println(err)
+		}
+	}()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		H.handleConnect(w, r)
 	})
 	log.Println("Hls Server Listening ", HlsListenPort)
-	http.ListenAndServe(HlsListenPort, mux)
+	if err := http.ListenAndServe(HlsListenPort, mux); err != nil {
+		panic("Hls Server Can't Start...")
+	}
 }
 
 func (H Hls) handleConnect(w http.ResponseWriter, r *http.Request) {
