@@ -11,6 +11,7 @@ type Show struct {
 	Subs     sync.Map
 	Cache    *Cache
 	HlsToken string
+	Mp4      *Mp4
 }
 
 type Center struct {
@@ -91,12 +92,15 @@ func (C *Center) getHlsClient(uri string) (cli client.Client) {
 }
 
 func (S *Show) start() {
+	S.Mp4 = NewMp4()
 	for {
 		packet, ok := S.Pub.GetPacket()
 		if !ok {
+			S.Mp4.StopStore(S.Pub.Token())
 			LeaveShow(S.Pub)
 			break
 		}
+		S.Mp4.StartStore(packet)
 		S.Cache.Save(packet)
 		S.sendPacket(packet)
 	}

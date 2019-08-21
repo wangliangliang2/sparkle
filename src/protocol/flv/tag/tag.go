@@ -114,19 +114,23 @@ func (t *Tag) ParseVideoInfo(b []byte) (err error) {
 }
 
 func (t Tag) IsAudioSequence() bool {
-	return t.SoundFormat == SoundAac && t.AacPacketType == AvcSeqHeader
-}
-
-func (t Tag) IsVideoSequence() bool {
-	return t.FrameType == FrameKey && t.AvcPacketType == AvcSeqHeader
+	return t.SoundFormat == SoundAac && t.AacPacketType == AacSeqHeader
 }
 
 func (t Tag) IsPureAudioData() bool {
 	return t.AacPacketType != AacSeqHeader
 }
 
+func (t Tag) IsVideoSequence() bool {
+	return t.FrameType == FrameKey && t.AvcPacketType == AvcSeqHeader
+}
+
+func (t Tag) IsVideoEndSequence() bool {
+	return t.FrameType == FrameKey && t.AvcPacketType == AvcEos
+}
+
 func (t Tag) IsPureVideoData() bool {
-	return t.AvcPacketType != AvcSeqHeader
+	return t.AvcPacketType != AvcSeqHeader && t.AvcPacketType != AvcEos
 }
 
 func (t Tag) IsVideoKeyFrame() bool {

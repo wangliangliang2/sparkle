@@ -1,0 +1,59 @@
+package mp4
+
+import "bytes"
+
+type Mvhd struct {
+	TimeScale uint32
+	Duration  uint32
+}
+
+func (M *Mvhd) Size() uint32 {
+
+	return BoxHeaderSize + 100
+}
+
+func (M *Mvhd) Serial() []byte {
+	var content bytes.Buffer
+
+	content.Write(Mp4Uint32BE(M.Size()))
+	content.WriteString("mvhd")
+
+	// version 1byte flags 3bytes
+	content.Write([]byte{0x00, 0x00, 0x00, 0x00})
+	//createTime
+	content.Write([]byte{0x00, 0x00, 0x00, 0x00})
+	//modificationTime
+	content.Write([]byte{0x00, 0x00, 0x00, 0x00})
+
+	content.Write(Mp4Uint32BE(M.TimeScale))
+	content.Write(Mp4Uint32BE(M.Duration))
+
+	//rate
+	content.Write([]byte{0x00, 0x01, 0x00, 0x00})
+	//volume
+	content.Write([]byte{0x01, 0x00})
+
+	// reserved
+	content.Write(make([]byte, 10))
+
+	// matrix
+	content.Write([]byte{
+		0x00, 0x01, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+		0x00, 0x01, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+		0x40, 0x00, 0x00, 0x00,
+	})
+
+	//pre-defined
+	content.Write(make([]byte, 24))
+
+	//next track id
+	content.Write([]byte{0x00, 0x00, 0x00, 0x03})
+
+	return content.Bytes()
+}

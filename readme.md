@@ -11,6 +11,7 @@
 
 -  FLV
 -  TS
+-  MP4
 
 #### Support Encoding:
 
