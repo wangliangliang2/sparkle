@@ -33,6 +33,12 @@ func Mp4Uint32BE(v uint32) []byte {
 	return b
 }
 
+func Mp4Uint64BE(v uint64) []byte {
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, v)
+	return b
+}
+
 type AACInfo struct {
 	SampleSize    uint32
 	SampleRate    uint32

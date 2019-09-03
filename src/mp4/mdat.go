@@ -6,15 +6,30 @@ type Mdat struct {
 	Data []byte
 }
 
-func (M *Mdat) Size() uint32 {
+const largesize uint64 = 8
 
-	return BoxHeaderSize + uint32(len(M.Data))
+func (M *Mdat) Size() uint64 {
+	if M.isSizeTooBig() {
+		return BoxHeaderSize + largesize + uint64(len(M.Data))
+	}
+	return BoxHeaderSize + uint64(len(M.Data))
+}
+
+func (M *Mdat) isSizeTooBig() bool {
+	if len(M.Data) > 0xffffffff {
+		return true
+	}
+	return false
 }
 
 func (M *Mdat) Serial() []byte {
 	var content bytes.Buffer
-
-	content.Write(Mp4Uint32BE(M.Size()))
+	if M.isSizeTooBig() {
+		content.Write(Mp4Uint32BE(1))
+		content.Write(Mp4Uint64BE(M.Size()))
+	} else {
+		content.Write(Mp4Uint32BE(uint32(M.Size())))
+	}
 	content.WriteString("mdat")
 	content.Write(M.Data)
 	return content.Bytes()
