@@ -27,6 +27,11 @@ const (
 	SoundSample_STEREO
 )
 
+const (
+	MovTimescale                 = 1000
+	MovTimescaleToMediaTimescale = 30
+)
+
 func Mp4Uint32BE(v uint32) []byte {
 	b := make([]byte, 4)
 	binary.BigEndian.PutUint32(b, v)
@@ -94,14 +99,14 @@ func GetFreeBox() Free {
 
 func GetMvhdBox(duration uint32) Mvhd {
 	return Mvhd{
-		TimeScale: 1000,
-		Duration:  duration * 1000,
+		TimeScale: MovTimescale,
+		Duration:  duration * MovTimescale,
 	}
 }
 
 func GetTkhdBox(isVideo bool, duration, width, height uint32) Tkhd {
 	return Tkhd{
-		Duration: duration * 1000,
+		Duration: duration * MovTimescale,
 		IsVideo:  isVideo,
 		Width:    width,
 		Height:   height,
@@ -197,8 +202,8 @@ func GetVideoTrak(duration, width, height uint32, seq, stts, stss, ctts, stsc, s
 		Tkhd: GetTkhdBox(true, duration, width, height),
 		Mdia: Mdia{
 			Mdhd: Mdhd{
-				TimeScale: 30000,
-				Duration:  duration * 1000 * 30,
+				TimeScale: MovTimescale * MovTimescaleToMediaTimescale,
+				Duration:  duration * MovTimescale * MovTimescaleToMediaTimescale,
 			},
 			Hdlr: Hdlr{
 				IsVideo: true,
