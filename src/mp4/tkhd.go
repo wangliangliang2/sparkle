@@ -43,13 +43,15 @@ func (T *Tkhd) Serial() []byte {
 	if T.IsVideo {
 		//layer 2bytes alternate group 2bytes
 		content.Write([]byte{0x00, 0x00, 0x00, 0x00})
+		// volume
 		content.Write([]byte{0x00, 0x00})
 	} else {
 		//layer 2bytes alternate group 2bytes
 		content.Write([]byte{0x00, 0x00, 0x00, 0x01})
+		// volume
 		content.Write([]byte{0x01, 0x00})
 	}
-	// reserved 4bytes
+	// reserved 2bytes
 	content.Write(make([]byte, 2))
 
 	// matrix

@@ -165,7 +165,7 @@ func (M *Mp4) storeVideoCtts(packet *av.Packet) {
 }
 
 func (M *Mp4) storeVideoStts(duration uint32) {
-	videoSampleDuration := duration * 1000 * 30 / M.VideoSampleCount
+	videoSampleDuration := duration * mp4.MovTimescale * mp4.MovTimescaleToMediaTimescale / M.VideoSampleCount
 	M.VideoSttsBuffer.Write(mp4.Mp4Uint32BE(M.VideoSampleCount))
 	M.VideoSttsBuffer.Write(mp4.Mp4Uint32BE(videoSampleDuration))
 }

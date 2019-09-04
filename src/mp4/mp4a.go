@@ -20,15 +20,11 @@ func (M *Mp4a) Serial() []byte {
 	content.Write(Mp4Uint32BE(M.Size()))
 	content.WriteString("mp4a")
 	//reserved
-	content.Write(make([]byte, 4))
-	//reserved
-	content.Write(make([]byte, 2))
+	content.Write(make([]byte, 6))
 	// data_reference_index = 1
 	content.Write([]byte{0x00, 0x01})
 	//reserved
-	content.Write(make([]byte, 4))
-	//reserved
-	content.Write(make([]byte, 4))
+	content.Write(make([]byte, 8))
 
 	channel := Mp4Uint32BE(M.Channels)
 	content.Write(channel[2:])
